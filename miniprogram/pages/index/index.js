@@ -6,6 +6,7 @@ const BOARD_OFFSET_Y = 40
 const BIN_ITEM_CAPACITY = 3
 const DEFAULT_BIN_COUNT = 2
 const MAX_BIN_COUNT = 4
+const AUTO_STORE_MAX_STEPS = 8
 
 function buildTopIdSet(blocks) {
   const topMap = {}
@@ -152,51 +153,75 @@ Page({
   },
 
   autoStoreLoop() {
-    const capacity = this.data.binItemCapacity
-    const maxPasses = this.data.stashSlots.length + 1
-    let pass = 0
-    let moved = false
-    let stashSlots = this.data.stashSlots.slice()
-    let bins = this.data.bins.map((bin) => ({ ...bin, items: bin.items.slice() }))
+    const nextState = this.runAutoStoreOnce({
+      stashSlots: this.data.stashSlots,
+      bins: this.data.bins,
+      maxSteps: AUTO_STORE_MAX_STEPS
+    })
 
-    while (pass < maxPasses) {
-      pass += 1
-      let movedInPass = false
-
-      for (let i = 0; i < stashSlots.length; i++) {
-        const item = stashSlots[i]
-        if (!item) continue
-
-        const binIndex = bins.findIndex((bin) => bin.color === item.color && bin.items.length < capacity)
-        if (binIndex === -1) continue
-
-        bins[binIndex].items.push(item)
-        stashSlots[i] = null
-        movedInPass = true
-        moved = true
-
-        if (bins[binIndex].items.length >= capacity) {
-          bins[binIndex] = {
-            color: this.pickNewBinColor(stashSlots, bins),
-            items: []
-          }
-        }
-      }
-
-      if (!movedInPass) break
-    }
-
-    if (pass >= maxPasses) {
-      console.warn('[autoStoreLoop] stopped by safety limit', { maxPasses })
-    }
-
-    if (!moved) return
+    if (!nextState.moved) return
 
     this.setData({
-      stashSlots,
-      bins,
-      stashCount: this.countStash(stashSlots)
+      stashSlots: nextState.stashSlots,
+      bins: nextState.bins,
+      stashCount: this.countStash(nextState.stashSlots)
     })
+  },
+
+  runAutoStoreOnce({ stashSlots, bins, maxSteps = AUTO_STORE_MAX_STEPS }) {
+    const capacity = this.data.binItemCapacity
+    const nextSlots = stashSlots.slice()
+    const nextBins = bins.map((bin) => ({ ...bin, items: bin.items.slice() }))
+    const limit = Math.max(1, maxSteps)
+    let moved = false
+    let steps = 0
+
+    while (steps < limit) {
+      const move = this.findNextStoreMove(nextSlots, nextBins, capacity)
+      if (!move) break
+
+      steps += 1
+      moved = true
+
+      const { slotIndex, binIndex, item } = move
+      nextSlots[slotIndex] = null
+      nextBins[binIndex].items.push(item)
+
+      if (nextBins[binIndex].items.length >= capacity) {
+        nextBins[binIndex] = {
+          color: this.pickNewBinColor(nextSlots, nextBins),
+          items: []
+        }
+      }
+    }
+
+    if (steps >= limit) {
+      console.warn('[autoStoreLoop] stopped by step limit', { limit })
+    }
+
+    return {
+      moved,
+      stashSlots: nextSlots,
+      bins: nextBins
+    }
+  },
+
+  findNextStoreMove(stashSlots, bins, capacity) {
+    for (let slotIndex = 0; slotIndex < stashSlots.length; slotIndex++) {
+      const item = stashSlots[slotIndex]
+      if (!item) continue
+
+      const binIndex = bins.findIndex((bin) => bin.color === item.color && bin.items.length < capacity)
+      if (binIndex !== -1) {
+        return {
+          slotIndex,
+          binIndex,
+          item
+        }
+      }
+    }
+
+    return null
   },
 
   pickNewBinColor(stashSlots, bins) {
