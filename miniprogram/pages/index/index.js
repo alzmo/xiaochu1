@@ -152,32 +152,45 @@ Page({
   },
 
   autoStoreLoop() {
-    let moved = true
+    const capacity = this.data.binItemCapacity
+    const maxPasses = this.data.stashSlots.length + 1
+    let pass = 0
+    let moved = false
     let stashSlots = this.data.stashSlots.slice()
     let bins = this.data.bins.map((bin) => ({ ...bin, items: bin.items.slice() }))
 
-    while (moved) {
-      moved = false
+    while (pass < maxPasses) {
+      pass += 1
+      let movedInPass = false
 
       for (let i = 0; i < stashSlots.length; i++) {
         const item = stashSlots[i]
         if (!item) continue
 
-        const binIndex = bins.findIndex((bin) => bin.color === item.color && bin.items.length < this.data.binItemCapacity)
+        const binIndex = bins.findIndex((bin) => bin.color === item.color && bin.items.length < capacity)
         if (binIndex === -1) continue
 
         bins[binIndex].items.push(item)
         stashSlots[i] = null
+        movedInPass = true
         moved = true
 
-        if (bins[binIndex].items.length >= this.data.binItemCapacity) {
+        if (bins[binIndex].items.length >= capacity) {
           bins[binIndex] = {
             color: this.pickNewBinColor(stashSlots, bins),
             items: []
           }
         }
       }
+
+      if (!movedInPass) break
     }
+
+    if (pass >= maxPasses) {
+      console.warn('[autoStoreLoop] stopped by safety limit', { maxPasses })
+    }
+
+    if (!moved) return
 
     this.setData({
       stashSlots,
@@ -230,10 +243,12 @@ Page({
       return
     }
 
-    this.setData({
-      status: 'playing',
-      statusLabel: '进行中'
-    })
+    if (this.data.status !== 'playing' || this.data.statusLabel !== '进行中') {
+      this.setData({
+        status: 'playing',
+        statusLabel: '进行中'
+      })
+    }
   },
 
   failGame() {
