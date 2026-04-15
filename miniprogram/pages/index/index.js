@@ -6,7 +6,6 @@ const BOARD_OFFSET_Y = 40
 const BIN_ITEM_CAPACITY = 3
 const DEFAULT_BIN_COUNT = 2
 const MAX_BIN_COUNT = 4
-const AUTO_STORE_MAX_STEPS = 8
 
 function buildTopIdSet(blocks) {
   const topMap = {}
@@ -42,10 +41,13 @@ Page({
   },
 
   onLoad() {
+    this._autoStoreTimer = null
+    this._autoStoreScheduled = false
     this.loadLevel(1)
   },
 
   loadLevel(level) {
+    this.clearAutoStoreTask()
     const levelData = generateLevel(level)
     const binCount = this.getConfiguredBinCount()
     const bins = this.initBins(levelData.palette, binCount)
@@ -146,61 +148,87 @@ Page({
       stashSlots: updatedSlots,
       stashCount: this.countStash(updatedSlots)
     }, () => {
-      this.autoStoreLoop()
       this.refreshRenderBlocks()
       this.checkGameState()
+      this.scheduleAutoStoreStep()
     })
   },
 
-  autoStoreLoop() {
-    const nextState = this.runAutoStoreOnce({
+  clearAutoStoreTask() {
+    if (this._autoStoreTimer) {
+      clearTimeout(this._autoStoreTimer)
+      this._autoStoreTimer = null
+    }
+    this._autoStoreScheduled = false
+  },
+
+  scheduleAutoStoreStep() {
+    if (this.data.status !== 'playing') return
+    if (this._autoStoreScheduled) return
+
+    this._autoStoreScheduled = true
+    this._autoStoreTimer = setTimeout(() => {
+      this._autoStoreScheduled = false
+      this._autoStoreTimer = null
+      this.processAutoStoreStep()
+    }, 0)
+  },
+
+  processAutoStoreStep() {
+    if (this.data.status !== 'playing') return
+
+    const nextState = this.runAutoStoreStep({
       stashSlots: this.data.stashSlots,
-      bins: this.data.bins,
-      maxSteps: AUTO_STORE_MAX_STEPS
+      bins: this.data.bins
     })
 
-    if (!nextState.moved) return
+    if (!nextState.moved) {
+      this.checkGameState()
+      return
+    }
 
     this.setData({
       stashSlots: nextState.stashSlots,
       bins: nextState.bins,
       stashCount: this.countStash(nextState.stashSlots)
+    }, () => {
+      this.checkGameState()
+      if (this.data.status === 'playing' && nextState.canContinue) {
+        this.scheduleAutoStoreStep()
+      }
     })
   },
 
-  runAutoStoreOnce({ stashSlots, bins, maxSteps = AUTO_STORE_MAX_STEPS }) {
+  runAutoStoreStep({ stashSlots, bins }) {
     const capacity = this.data.binItemCapacity
     const nextSlots = stashSlots.slice()
     const nextBins = bins.map((bin) => ({ ...bin, items: bin.items.slice() }))
-    const limit = Math.max(1, maxSteps)
-    let moved = false
-    let steps = 0
-
-    while (steps < limit) {
-      const move = this.findNextStoreMove(nextSlots, nextBins, capacity)
-      if (!move) break
-
-      steps += 1
-      moved = true
-
-      const { slotIndex, binIndex, item } = move
-      nextSlots[slotIndex] = null
-      nextBins[binIndex].items.push(item)
-
-      if (nextBins[binIndex].items.length >= capacity) {
-        nextBins[binIndex] = {
-          color: this.pickNewBinColor(nextSlots, nextBins),
-          items: []
-        }
+    const move = this.findNextStoreMove(nextSlots, nextBins, capacity)
+    if (!move) {
+      return {
+        moved: false,
+        canContinue: false,
+        stashSlots: nextSlots,
+        bins: nextBins
       }
     }
 
-    if (steps >= limit) {
-      console.warn('[autoStoreLoop] stopped by step limit', { limit })
+    const { slotIndex, binIndex, item } = move
+    nextSlots[slotIndex] = null
+    nextBins[binIndex].items.push(item)
+
+    if (nextBins[binIndex].items.length >= capacity) {
+      nextBins[binIndex] = {
+        color: this.pickNewBinColor(nextSlots, nextBins),
+        items: []
+      }
     }
 
+    const canContinue = !!this.findNextStoreMove(nextSlots, nextBins, capacity)
+
     return {
-      moved,
+      moved: true,
+      canContinue,
       stashSlots: nextSlots,
       bins: nextBins
     }
@@ -256,6 +284,7 @@ Page({
     const stashCount = this.data.stashSlots.filter(Boolean).length
 
     if (remainBlocks === 0 && stashCount === 0) {
+      this.clearAutoStoreTask()
       this.setData({
         status: 'win',
         statusLabel: '胜利'
@@ -277,6 +306,7 @@ Page({
   },
 
   failGame() {
+    this.clearAutoStoreTask()
     this.setData({
       status: 'fail',
       statusLabel: '失败'
@@ -289,5 +319,9 @@ Page({
 
   nextLevel() {
     this.loadLevel(this.data.level + 1)
+  },
+
+  onUnload() {
+    this.clearAutoStoreTask()
   }
 })
