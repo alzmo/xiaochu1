@@ -3,6 +3,9 @@ const { generateLevel, COLOR_POOL } = require('../../utils/levelGenerator')
 const CELL_SIZE = 78
 const BOARD_OFFSET_X = 120
 const BOARD_OFFSET_Y = 40
+const BIN_ITEM_CAPACITY = 3
+const DEFAULT_BIN_COUNT = 2
+const MAX_BIN_COUNT = 4
 
 function buildTopIdSet(blocks) {
   const topMap = {}
@@ -30,6 +33,9 @@ Page({
     renderBlocks: [],
     stashSlots: [null, null, null, null, null],
     bins: [],
+    binCount: DEFAULT_BIN_COUNT,
+    maxBinCount: MAX_BIN_COUNT,
+    binItemCapacity: BIN_ITEM_CAPACITY,
     stashCount: 0,
     levelPalette: []
   },
@@ -40,7 +46,8 @@ Page({
 
   loadLevel(level) {
     const levelData = generateLevel(level)
-    const bins = this.initBins(levelData.palette)
+    const binCount = this.getConfiguredBinCount()
+    const bins = this.initBins(levelData.palette, binCount)
 
     this.setData({
       level,
@@ -49,6 +56,7 @@ Page({
       blocks: levelData.blocks,
       stashSlots: [null, null, null, null, null],
       bins,
+      binCount,
       stashCount: 0,
       levelPalette: levelData.palette
     }, () => {
@@ -56,10 +64,27 @@ Page({
     })
   },
 
-  initBins(palette) {
+  getConfiguredBinCount(nextBinCount = this.data.binCount) {
+    const normalized = Number(nextBinCount)
+    if (Number.isNaN(normalized)) return DEFAULT_BIN_COUNT
+    return Math.max(DEFAULT_BIN_COUNT, Math.min(this.data.maxBinCount, normalized))
+  },
+
+  setBinCount(nextBinCount) {
+    const binCount = this.getConfiguredBinCount(nextBinCount)
+    this.setData({ binCount })
+  },
+
+  unlockExtraBinByAd() {
+    // 预留：后续接入广告激励后调用该方法，最多扩容到 MAX_BIN_COUNT
+    this.setBinCount(this.data.binCount + 1)
+    this.loadLevel(this.data.level)
+  },
+
+  initBins(palette, binCount) {
     const shuffled = palette.slice().sort(() => Math.random() - 0.5)
     const selected = []
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < binCount; i++) {
       selected.push({
         color: shuffled[i % shuffled.length],
         items: []
@@ -138,14 +163,14 @@ Page({
         const item = stashSlots[i]
         if (!item) continue
 
-        const binIndex = bins.findIndex((bin) => bin.color === item.color && bin.items.length < 3)
+        const binIndex = bins.findIndex((bin) => bin.color === item.color && bin.items.length < this.data.binItemCapacity)
         if (binIndex === -1) continue
 
         bins[binIndex].items.push(item)
         stashSlots[i] = null
         moved = true
 
-        if (bins[binIndex].items.length >= 3) {
+        if (bins[binIndex].items.length >= this.data.binItemCapacity) {
           bins[binIndex] = {
             color: this.pickNewBinColor(stashSlots, bins),
             items: []
