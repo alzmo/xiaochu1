@@ -1,0 +1,105 @@
+.page {
+  padding: 20rpx;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 18rpx;
+  margin-bottom: 16rpx;
+  box-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.06);
+}
+
+.header .title {
+  font-size: 38rpx;
+  font-weight: 700;
+  margin-bottom: 6rpx;
+}
+
+.tips {
+  margin-top: 8rpx;
+  color: #6b7280;
+  font-size: 24rpx;
+}
+
+.canvas {
+  position: relative;
+  height: 760rpx;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f9fafb, #eef2ff);
+}
+
+.block {
+  position: absolute;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 10rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 20rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.7);
+}
+
+.block.blocked {
+  opacity: 0.35;
+}
+
+.block.clickable {
+  opacity: 1;
+  box-shadow: 0 6rpx 10rpx rgba(0, 0, 0, 0.22);
+}
+
+.panel-title {
+  font-weight: 600;
+  margin-bottom: 10rpx;
+}
+
+.stash-row,
+.bins-row {
+  display: flex;
+  gap: 12rpx;
+}
+
+.stash-slot {
+  flex: 1;
+  min-height: 64rpx;
+  border-radius: 10rpx;
+  border: 2rpx dashed #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  text-transform: capitalize;
+}
+
+.bin {
+  flex: 1;
+  border-radius: 10rpx;
+  min-height: 92rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.bin-color {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.actions {
+  display: flex;
+  gap: 16rpx;
+  justify-content: center;
+  margin-top: 8rpx;
+}
+
+.color-red { background: #ef4444; }
+.color-blue { background: #3b82f6; }
+.color-green { background: #10b981; }
+.color-yellow { background: #eab308; }
+.color-purple { background: #8b5cf6; }
+.color-orange { background: #f97316; }
