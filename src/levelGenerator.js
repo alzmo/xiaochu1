@@ -1,12 +1,10 @@
-const COLOR_POOL = ['red', 'blue', 'green', 'yellow', 'purple', 'orange']
+const { COLOR_POOL } = require('./config')
 
 const SHAPES = {
   rectangle: (w = 4, h = 4) => {
     const cells = []
     for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        cells.push({ x, y })
-      }
+      for (let x = 0; x < w; x++) cells.push({ x, y })
     }
     return cells
   },
@@ -14,8 +12,8 @@ const SHAPES = {
     const cells = []
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        const border = x === 0 || y === 0 || x === w - 1 || y === h - 1
-        if (border) cells.push({ x, y })
+        const isBorder = x === 0 || y === 0 || x === w - 1 || y === h - 1
+        if (isBorder) cells.push({ x, y })
       }
     }
     return cells
@@ -57,70 +55,68 @@ function getDifficulty(level) {
   }
 }
 
-function pickTemplates(complexity) {
-  const allTemplates = ['rectangle', 'hollowRectangle', 'cross', 'letterL', 'letterT']
-  if (complexity === 1) return allTemplates.slice(0, 3)
-  if (complexity === 2) return allTemplates.slice(0, 4)
-  return allTemplates
+function pickShapeTemplates(complexity) {
+  const allShapeTemplates = ['rectangle', 'hollowRectangle', 'cross', 'letterL', 'letterT']
+  if (complexity === 1) return allShapeTemplates.slice(0, 3)
+  if (complexity === 2) return allShapeTemplates.slice(0, 4)
+  return allShapeTemplates
 }
 
-function buildBaseCells(level, complexity) {
-  const templates = pickTemplates(complexity)
+function buildLevelShape(level, complexity) {
+  const templates = pickShapeTemplates(complexity)
   const templateName = templates[level % templates.length]
 
   switch (templateName) {
     case 'rectangle':
-      return SHAPES.rectangle(4 + (level % 2), 4 + Math.floor(level % 3 === 0))
+      return SHAPES.rectangle(4 + (level % 2), 4 + Number(level % 3 === 0))
     case 'hollowRectangle':
       return SHAPES.hollowRectangle(5 + (level % 2), 5)
     case 'cross':
       return SHAPES.cross(5 + (level % 2) * 2)
     case 'letterL':
-      return SHAPES.letterL(4 + (level % 2), 5 + Math.floor(level % 3 === 0))
+      return SHAPES.letterL(4 + (level % 2), 5 + Number(level % 3 === 0))
     case 'letterT':
     default:
       return SHAPES.letterT(5 + (level % 2), 5)
   }
 }
 
-function allocateColors(total, palette) {
-  const counts = {}
-  palette.forEach((color) => { counts[color] = 0 })
+function createColorBag(totalCount, palette) {
+  const colorCountMap = {}
+  palette.forEach((color) => { colorCountMap[color] = 0 })
 
-  // 先按 3 的倍数分配，适配 3 消逻辑
-  const chunks = Math.floor(total / 3)
+  const chunks = Math.floor(totalCount / 3)
   for (let i = 0; i < chunks; i++) {
     const color = palette[i % palette.length]
-    counts[color] += 3
+    colorCountMap[color] += 3
   }
 
-  // 剩余数量补齐
-  let assigned = chunks * 3
-  while (assigned < total) {
-    const color = palette[assigned % palette.length]
-    counts[color] += 1
-    assigned += 1
+  let assignedCount = chunks * 3
+  while (assignedCount < totalCount) {
+    const color = palette[assignedCount % palette.length]
+    colorCountMap[color] += 1
+    assignedCount += 1
   }
 
-  const colors = []
-  Object.keys(counts).forEach((color) => {
-    for (let i = 0; i < counts[color]; i++) colors.push(color)
+  const colorBag = []
+  Object.keys(colorCountMap).forEach((color) => {
+    for (let i = 0; i < colorCountMap[color]; i++) colorBag.push(color)
   })
 
-  for (let i = colors.length - 1; i > 0; i--) {
+  for (let i = colorBag.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-    const tmp = colors[i]
-    colors[i] = colors[j]
-    colors[j] = tmp
+    const tmp = colorBag[i]
+    colorBag[i] = colorBag[j]
+    colorBag[j] = tmp
   }
 
-  return colors
+  return colorBag
 }
 
 function generateLevel(level = 1) {
   const difficulty = getDifficulty(level)
   const palette = COLOR_POOL.slice(0, difficulty.colors)
-  const baseCells = buildBaseCells(level, difficulty.complexity)
+  const levelShape = buildLevelShape(level, difficulty.complexity)
 
   const layerOffsets = [
     { x: 0, y: 0 },
@@ -131,45 +127,43 @@ function generateLevel(level = 1) {
     { x: -1, y: 1 }
   ]
 
-  const blocks = []
-  const total = baseCells.length * difficulty.layers
-  const colorBag = allocateColors(total, palette)
+  const totalBlocks = levelShape.length * difficulty.layers
+  const colorBag = createColorBag(totalBlocks, palette)
 
+  const blockLayers = []
   let idCounter = 1
-  let colorIndex = 0
+  let colorCursor = 0
+
   for (let layer = 1; layer <= difficulty.layers; layer++) {
     const offset = layerOffsets[layer - 1] || { x: 0, y: 0 }
-    baseCells.forEach((cell) => {
-      blocks.push({
+    levelShape.forEach((cell) => {
+      blockLayers.push({
         id: `L${level}-B${idCounter++}`,
         x: cell.x + offset.x,
         y: cell.y + offset.y,
         layer,
-        color: colorBag[colorIndex++],
+        color: colorBag[colorCursor++],
         removed: false
       })
     })
   }
 
-  const xs = blocks.map((b) => b.x)
-  const ys = blocks.map((b) => b.y)
-  const bounds = {
-    minX: Math.min(...xs),
-    maxX: Math.max(...xs),
-    minY: Math.min(...ys),
-    maxY: Math.max(...ys)
-  }
-
+  const xs = blockLayers.map((b) => b.x)
+  const ys = blockLayers.map((b) => b.y)
   return {
     level,
     palette,
     difficulty,
-    blocks,
-    bounds
+    blockLayers,
+    bounds: {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys)
+    }
   }
 }
 
 module.exports = {
-  COLOR_POOL,
   generateLevel
 }

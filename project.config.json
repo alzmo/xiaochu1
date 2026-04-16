@@ -1,5 +1,5 @@
 {
-  "description": "叠层矿格 - 微信小程序原创消除游戏",
+  "description": "叠层矿格 - 微信小游戏原创消除游戏",
   "packOptions": {
     "ignore": []
   },
@@ -7,13 +7,13 @@
     "urlCheck": false,
     "es6": true,
     "enhance": true,
-    "postcss": true,
+    "postcss": false,
     "minified": false
   },
-  "compileType": "miniprogram",
+  "compileType": "game",
   "libVersion": "3.4.8",
   "appid": "touristappid",
-  "projectname": "stacked-mine-grid",
-  "miniprogramRoot": "miniprogram/",
+  "projectname": "stacked-mine-grid-game",
+  "minigameRoot": "./",
   "condition": {}
 }
