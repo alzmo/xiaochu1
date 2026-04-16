@@ -14,6 +14,10 @@ function pickRandomColor(colorCandidates) {
   return colorCandidates[idx]
 }
 
+function uniqueColors(colors) {
+  return Array.from(new Set(colors))
+}
+
 function createGameState() {
   const state = {
     title: GAME_TITLE,
@@ -26,31 +30,75 @@ function createGameState() {
     layout: null
   }
 
-  function createInitialColorBins(palette) {
-    const sourceColors = (palette && palette.length ? palette : COLOR_POOL).slice()
-    const firstColor = pickRandomColor(sourceColors)
-    let secondColor = pickRandomColor(sourceColors)
-    if (sourceColors.length > 1) {
-      while (secondColor === firstColor) secondColor = pickRandomColor(sourceColors)
-    }
-
-    return [
-      { color: firstColor, count: 0, capacity: BIN_CAPACITY },
-      { color: secondColor, count: 0, capacity: BIN_CAPACITY }
-    ]
+  function getActivePalette() {
+    const palette = state.levelData && state.levelData.palette && state.levelData.palette.length
+      ? state.levelData.palette
+      : COLOR_POOL
+    return uniqueColors(palette)
   }
 
   function loadLevel(level) {
     state.currentLevel = level
     state.levelData = generateLevel(level)
     state.tempSlots = []
-    state.colorBins = createInitialColorBins(state.levelData.palette)
+    state.colorBins = createInitialColorBins()
     state.gameStatus = 'playing'
     state.statusText = `第 ${level} 关`
   }
 
   function getRemainingBlocks() {
     return state.levelData.blockLayers.filter((block) => !block.removed)
+  }
+
+  function getPendingColors() {
+    const tempColors = state.tempSlots.map((slot) => slot.color)
+    const remainingColors = getRemainingBlocks().map((block) => block.color)
+    return uniqueColors([...tempColors, ...remainingColors])
+  }
+
+  function pickBinRefreshColor(excludedColors = [], forceColor = null) {
+    const palette = getActivePalette()
+    const excludedSet = new Set(excludedColors)
+
+    if (forceColor && !excludedSet.has(forceColor)) return forceColor
+
+    const pendingColors = getPendingColors()
+    const prioritizedPending = pendingColors.filter((color) => !excludedSet.has(color))
+    if (prioritizedPending.length > 0) return pickRandomColor(prioritizedPending)
+
+    const fallbackPool = palette.filter((color) => !excludedSet.has(color))
+    if (fallbackPool.length > 0) return pickRandomColor(fallbackPool)
+
+    if (forceColor) return forceColor
+    return palette[0] || COLOR_POOL[0]
+  }
+
+  function pickInitialBinColors() {
+    const palette = getActivePalette()
+    const pendingColors = getPendingColors()
+    const firstColor = pickBinRefreshColor([])
+
+    const pendingWithoutFirst = pendingColors.filter((color) => color !== firstColor)
+    const nonDuplicatePool = palette.filter((color) => color !== firstColor)
+
+    let secondColor
+    if (pendingWithoutFirst.length > 0) {
+      secondColor = pickRandomColor(pendingWithoutFirst)
+    } else if (nonDuplicatePool.length > 0) {
+      secondColor = pickRandomColor(nonDuplicatePool)
+    } else {
+      secondColor = firstColor
+    }
+
+    return [firstColor, secondColor]
+  }
+
+  function createInitialColorBins() {
+    const [firstColor, secondColor] = pickInitialBinColors()
+    return [
+      { color: firstColor, count: 0, capacity: BIN_CAPACITY },
+      { color: secondColor, count: 0, capacity: BIN_CAPACITY }
+    ]
   }
 
   // 设计说明：同坐标更高层存在方块时，下层不可点，体现“层叠遮挡”的核心规则。
@@ -75,10 +123,14 @@ function createGameState() {
 
       if (targetBin.count >= targetBin.capacity) {
         targetBin.count = 0
-        const nextPalette = state.levelData.palette && state.levelData.palette.length
-          ? state.levelData.palette
-          : COLOR_POOL
-        targetBin.color = pickRandomColor(nextPalette)
+        const otherBinColors = state.colorBins
+          .filter((bin) => bin !== targetBin)
+          .map((bin) => bin.color)
+        const pendingColors = getPendingColors()
+        const criticalColor = pendingColors.length === 1 ? pendingColors[0] : null
+        const forceColor = criticalColor && !otherBinColors.includes(criticalColor) ? criticalColor : null
+
+        targetBin.color = pickBinRefreshColor(otherBinColors, forceColor)
       }
       return true
     }
