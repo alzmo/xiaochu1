@@ -71,6 +71,19 @@ function createRenderer(canvas, gameStateApi) {
     ctx.fillText(text, x, y)
   }
 
+  function drawBlockLayerLabel(layer, centerX, centerY, blockSize) {
+    const fontSize = Math.max(11, Math.floor(blockSize * 0.38))
+    ctx.font = `bold ${fontSize}px sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.lineWidth = Math.max(2, Math.floor(fontSize / 5))
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.8)'
+    ctx.fillStyle = '#ffffff'
+    const text = `${layer}`
+    ctx.strokeText(text, centerX, centerY)
+    ctx.fillText(text, centerX, centerY)
+  }
+
   function drawBlocks(layout, visibleBlocks) {
     const { state } = gameStateApi
     const { bounds } = state.levelData
@@ -96,6 +109,7 @@ function createRenderer(canvas, gameStateApi) {
         const size = Math.max(14, cellSize - 3)
 
         drawRoundRect(left, top, size, size, 6, COLOR_STYLE[block.color], COLOR_STYLE.border)
+        drawBlockLayerLabel(block.layer, left + size / 2, top + size / 2, size)
         blockRects.push({
           blockId: block.id,
           left,

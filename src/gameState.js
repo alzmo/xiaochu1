@@ -7,6 +7,8 @@ const {
 } = require('./config')
 const { generateLevel } = require('./levelGenerator')
 
+const AUTO_STORE_STEP_LIMIT = 8
+
 function pickRandomColor(colorCandidates) {
   const idx = Math.floor(Math.random() * colorCandidates.length)
   return colorCandidates[idx]
@@ -84,10 +86,18 @@ function createGameState() {
     return false
   }
 
-  function processStoreUntilStable() {
-    while (processStoreOneStep()) {
-      // 设计说明：连锁处理统一在一个循环里完成，让点击后状态收敛到“稳定态”。
+  function runAutoStoreSteps(maxSteps = AUTO_STORE_STEP_LIMIT) {
+    const safeMaxSteps = Math.max(0, maxSteps)
+    for (let step = 0; step < safeMaxSteps; step++) {
+      const moved = processStoreOneStep()
+      if (!moved) break
     }
+  }
+
+  function hasStorableTempBlock() {
+    return state.tempSlots.some((slot) => {
+      return state.colorBins.some((bin) => bin.color === slot.color && bin.count < bin.capacity)
+    })
   }
 
   function tryPickBlock(blockId) {
@@ -105,22 +115,27 @@ function createGameState() {
 
     picked.removed = true
     state.tempSlots.push({ id: picked.id, color: picked.color })
-    processStoreUntilStable()
+    runAutoStoreSteps(AUTO_STORE_STEP_LIMIT)
     evaluateGameResult()
   }
 
   function evaluateGameResult() {
     const remainingBlocks = getRemainingBlocks()
-    if (remainingBlocks.length === 0 && state.tempSlots.length === 0) {
-      state.gameStatus = 'win'
-      state.statusText = '胜利！点击下方“下一关”继续'
+
+    if (remainingBlocks.length === 0) {
+      runAutoStoreSteps(TEMP_SLOT_LIMIT)
+      if (state.tempSlots.length === 0) {
+        state.gameStatus = 'win'
+        state.statusText = '胜利！点击下方“下一关”继续'
+        return
+      }
+
+      state.gameStatus = 'fail'
+      state.statusText = '画布已清空但暂存槽无法收纳，挑战失败'
       return
     }
 
-    const canContinueStore = state.tempSlots.some((slot) => {
-      return state.colorBins.some((bin) => bin.color === slot.color && bin.count < bin.capacity)
-    })
-
+    const canContinueStore = hasStorableTempBlock()
     if (state.tempSlots.length >= TEMP_SLOT_LIMIT && !canContinueStore) {
       state.gameStatus = 'fail'
       state.statusText = '暂存槽无可收纳，挑战失败'
