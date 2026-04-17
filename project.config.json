@@ -12,7 +12,7 @@
   },
   "compileType": "game",
   "libVersion": "3.4.8",
-  "appid": "touristappid",
+  "appid": "wx85992ef787d499cb",
   "projectname": "stacked-mine-grid-game",
   "minigameRoot": "./",
   "condition": {}
