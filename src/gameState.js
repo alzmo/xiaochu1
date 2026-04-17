@@ -1,6 +1,6 @@
-const { GAME_TITLE, BIN_CAPACITY, TEMP_SLOT_LIMIT } = require('./config')
+const { GAME_TITLE, BIN_CAPACITY } = require('./config')
 const { generateLevel } = require('./levelGenerator')
-const { solveLevelState } = require('./solver')
+const { solveLevelState, SOLVER_STATE } = require('./solver')
 const { loadProgress, saveProgress } = require('./storage')
 const { createLevelPreparation } = require('./levelPreparation')
 const {
@@ -55,7 +55,7 @@ function createGameState() {
         { maxNodes: 2500, autoStoreStepLimit: AUTO_STORE_STEP_LIMIT }
       )
 
-      if (!solveResult.solvable) continue
+      if (solveResult.state !== SOLVER_STATE.SOLVABLE) continue
 
       return {
         level,
@@ -121,39 +121,94 @@ function createGameState() {
     return cloneSnapshot(state.levelData, state.tempSlots, state.colorBins)
   }
 
-  function markNoSolution() {
-    state.gameStatus = 'fail'
-    state.statusText = '当前局面已无解 / 你已经走偏了'
-    state.helpMessage = '提示：当前局面已无解，请重开或使用广告帮助能力。'
-  }
-
-  function requestHintStep() {
-    if (state.gameStatus !== 'playing') return
-
+  function evaluateWithSolver(extraOptions = {}) {
     const snapshot = getHintSnapshot()
-    const hintResult = solveLevelState(
+    return solveLevelState(
       {
         levelData: snapshot.levelData,
         tempSlots: snapshot.tempSlots,
         colorBins: snapshot.colorBins
       },
-      { maxNodes: 1800, autoStoreStepLimit: AUTO_STORE_STEP_LIMIT, extraTempSlots: state.extraTempSlots }
+      {
+        maxNodes: extraOptions.maxNodes || 1800,
+        autoStoreStepLimit: AUTO_STORE_STEP_LIMIT,
+        extraTempSlots: state.extraTempSlots + (extraOptions.extraTempSlots || 0)
+      }
+    )
+  }
+
+  function resolveSuggestedBinColor(colorBinsOverride) {
+    const pendingColors = getPendingColors(state.levelData, state.tempSlots)
+    const usedColors = new Set((colorBinsOverride || state.colorBins).map((bin) => bin.color))
+    return pendingColors.find((color) => !usedColors.has(color))
+      || pickRefreshColor({ levelData: state.levelData, tempSlots: state.tempSlots, colorBins: colorBinsOverride || state.colorBins })
+  }
+
+  function evaluateAddBinRecovery() {
+    const snapshot = getHintSnapshot()
+    const recommendedColor = resolveSuggestedBinColor(snapshot.colorBins)
+    const nextBins = snapshot.colorBins.concat([{ color: recommendedColor, count: 0, capacity: BIN_CAPACITY }])
+
+    const result = solveLevelState(
+      {
+        levelData: snapshot.levelData,
+        tempSlots: snapshot.tempSlots,
+        colorBins: nextBins
+      },
+      {
+        maxNodes: 1800,
+        autoStoreStepLimit: AUTO_STORE_STEP_LIMIT,
+        extraTempSlots: state.extraTempSlots
+      }
     )
 
-    if (!hintResult.solvable || !hintResult.path.length) {
-      if (hintResult.reason === 'no_solution') {
-        markNoSolution()
-      } else {
-        state.helpMessage = '提示系统搜索中：当前局面较复杂，建议先清理高层方块。'
-      }
-      state.highlightedBlockId = null
+    return {
+      ...result,
+      suggestedColor: recommendedColor
+    }
+  }
+
+  function evaluateAddTempRecovery() {
+    return evaluateWithSolver({ extraTempSlots: 1, maxNodes: 1800 })
+  }
+
+  function markNoSolution() {
+    state.gameStatus = 'fail'
+    state.statusText = '当前局面已无解 / 你已经走偏了'
+    state.helpMessage = '当前局面已确认无解，请重开或使用策略帮助评估。'
+    state.highlightedBlockId = null
+  }
+
+  function showUnknownAnalysisMessage() {
+    state.helpMessage = '当前局面较复杂，暂时无法判断是否还有解。'
+    state.statusText = `第 ${state.currentLevel} 关进行中（局面分析：无法确定）`
+    state.highlightedBlockId = null
+  }
+
+  function requestHintStep() {
+    if (state.gameStatus !== 'playing') return
+
+    const hintResult = evaluateWithSolver({ maxNodes: 1800 })
+
+    if (hintResult.state === SOLVER_STATE.UNSOLVABLE) {
+      markNoSolution()
+      return
+    }
+
+    if (hintResult.state === SOLVER_STATE.UNKNOWN) {
+      showUnknownAnalysisMessage()
+      return
+    }
+
+    if (!hintResult.path.length) {
+      showUnknownAnalysisMessage()
       return
     }
 
     const nextStep = hintResult.path[0]
     state.highlightedBlockId = nextStep.blockId
-    state.helpMessage = `建议点击：${nextStep.color}（layer ${nextStep.layer}）`
-    state.statusText = `第 ${state.currentLevel} 关进行中（已给出一步提示）`
+    state.helpMessage = `建议先点这里：${nextStep.color}（layer ${nextStep.layer}）`
+    state.statusText = `第 ${state.currentLevel} 关进行中（局面分析：可解）`
   }
 
   function processStoreAndCheck() {
@@ -205,47 +260,53 @@ function createGameState() {
       return
     }
 
-    const solveCheck = solveLevelState(
-      {
-        levelData: cloneSnapshot(state.levelData, state.tempSlots, state.colorBins).levelData,
-        tempSlots: state.tempSlots,
-        colorBins: state.colorBins
-      },
-      { maxNodes: 1200, autoStoreStepLimit: AUTO_STORE_STEP_LIMIT, extraTempSlots: state.extraTempSlots }
-    )
+    const solveCheck = evaluateWithSolver({ maxNodes: 1200 })
 
-    if (!solveCheck.solvable && solveCheck.reason === 'no_solution') {
+    if (solveCheck.state === SOLVER_STATE.UNSOLVABLE) {
       markNoSolution()
       return
     }
 
     state.gameStatus = 'playing'
+    if (solveCheck.state === SOLVER_STATE.UNKNOWN) {
+      state.statusText = `第 ${state.currentLevel} 关进行中（局面分析：无法确定）`
+      if (!state.helpMessage) state.helpMessage = '当前局面较复杂，暂时无法判断是否还有解。'
+      return
+    }
+
     state.statusText = `第 ${state.currentLevel} 关进行中`
+  }
+
+  function formatTriState(stateFlag, textMap) {
+    if (stateFlag === SOLVER_STATE.SOLVABLE) return textMap.solvable
+    if (stateFlag === SOLVER_STATE.UNSOLVABLE) return textMap.unsolvable
+    return textMap.unknown
   }
 
   function addExtraBinHelp() {
     if (state.gameStatus !== 'playing') return
     if (!state.adHelpState.canAddBin) return
 
-    const pendingColors = getPendingColors(state.levelData, state.tempSlots)
-    const usedColors = new Set(state.colorBins.map((bin) => bin.color))
-    const recommendedColor = pendingColors.find((color) => !usedColors.has(color))
-      || pickRefreshColor({ levelData: state.levelData, tempSlots: state.tempSlots, colorBins: state.colorBins })
+    const analysis = evaluateAddBinRecovery()
+    const message = formatTriState(analysis.state, {
+      solvable: `策略建议：若增加 1 个收纳篮（建议颜色 ${analysis.suggestedColor}），当前局面可回正。`,
+      unsolvable: `策略建议：即使增加 1 个收纳篮（建议颜色 ${analysis.suggestedColor}），当前局面仍无解。`,
+      unknown: `策略建议：增加 1 个收纳篮（建议颜色 ${analysis.suggestedColor}）后的结果暂时无法可靠判断。`
+    })
 
-    state.colorBins.push({ color: recommendedColor, count: 0, capacity: BIN_CAPACITY })
-    state.adHelpState.canAddBin = false
-    state.helpMessage = '已增加 1 个收纳篮（广告能力预留接口）'
-    evaluateGameResult()
+    state.helpMessage = message
   }
 
   function addExtraTempSlotHelp() {
     if (state.gameStatus !== 'playing') return
     if (!state.adHelpState.canAddTempSlot) return
 
-    state.extraTempSlots += 1
-    state.adHelpState.canAddTempSlot = false
-    state.helpMessage = '已增加 1 个暂存槽（广告能力预留接口）'
-    evaluateGameResult()
+    const analysis = evaluateAddTempRecovery()
+    state.helpMessage = formatTriState(analysis.state, {
+      solvable: '策略建议：若增加 1 个暂存槽，当前局面可回正。',
+      unsolvable: '策略建议：即使增加 1 个暂存槽，当前局面仍无解。',
+      unknown: '策略建议：增加 1 个暂存槽后的结果暂时无法可靠判断。'
+    })
   }
 
   function nextLevel() {
