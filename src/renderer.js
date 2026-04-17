@@ -1,4 +1,4 @@
-const { COLOR_STYLE, TEMP_SLOT_LIMIT, BIN_COUNT } = require('./config')
+const { COLOR_STYLE, TEMP_SLOT_LIMIT } = require('./config')
 
 function createRenderer(canvas, gameStateApi) {
   const ctx = canvas.getContext('2d')
@@ -11,34 +11,41 @@ function createRenderer(canvas, gameStateApi) {
       left: 16,
       top: 16,
       width: width - 32,
-      height: Math.round(height * 0.56)
+      height: Math.round(height * 0.5)
     }
 
     const tempArea = {
       left: 16,
-      top: topPanel.top + topPanel.height + 14,
+      top: topPanel.top + topPanel.height + 12,
       width: width - 32,
-      height: 84
+      height: 86
     }
 
     const binsArea = {
       left: 16,
-      top: tempArea.top + tempArea.height + 12,
+      top: tempArea.top + tempArea.height + 10,
       width: width - 32,
       height: 96
     }
 
+    const helpArea = {
+      left: 16,
+      top: binsArea.top + binsArea.height + 8,
+      width: width - 32,
+      height: 52
+    }
+
     const footerArea = {
       left: 16,
-      top: binsArea.top + binsArea.height + 10,
+      top: helpArea.top + helpArea.height + 8,
       width: width - 32,
       height: 66
     }
 
-    return { width, height, topPanel, tempArea, binsArea, footerArea }
+    return { width, height, topPanel, tempArea, binsArea, helpArea, footerArea }
   }
 
-  function drawRoundRect(left, top, width, height, radius, fillStyle, strokeStyle) {
+  function drawRoundRect(left, top, width, height, radius, fillStyle, strokeStyle, lineWidth = 1) {
     const r = Math.min(radius, width / 2, height / 2)
     ctx.beginPath()
     ctx.moveTo(left + r, top)
@@ -59,6 +66,7 @@ function createRenderer(canvas, gameStateApi) {
 
     if (strokeStyle) {
       ctx.strokeStyle = strokeStyle
+      ctx.lineWidth = lineWidth
       ctx.stroke()
     }
   }
@@ -108,7 +116,11 @@ function createRenderer(canvas, gameStateApi) {
         const top = offsetY + (block.y - bounds.minY) * cellSize
         const size = Math.max(14, cellSize - 3)
 
+        const isHighlighted = state.highlightedBlockId === block.id
         drawRoundRect(left, top, size, size, 6, COLOR_STYLE[block.color], COLOR_STYLE.border)
+        if (isHighlighted) {
+          drawRoundRect(left - 2, top - 2, size + 4, size + 4, 8, null, '#fde047', 3)
+        }
         drawBlockLayerLabel(block.layer, left + size / 2, top + size / 2, size)
         blockRects.push({
           blockId: block.id,
@@ -124,30 +136,29 @@ function createRenderer(canvas, gameStateApi) {
 
   function drawTempSlots(layout) {
     const { state } = gameStateApi
+    const tempLimit = TEMP_SLOT_LIMIT + (state.extraTempSlots || 0)
     const slotGap = 8
-    const slotWidth = Math.floor((layout.tempArea.width - slotGap * (TEMP_SLOT_LIMIT + 1)) / TEMP_SLOT_LIMIT)
+    const slotWidth = Math.floor((layout.tempArea.width - slotGap * (tempLimit + 1)) / tempLimit)
     const slotHeight = 58
 
-    drawCenteredText('暂存槽（最多 5 个）', layout.tempArea.left + layout.tempArea.width / 2, layout.tempArea.top + 10, 14)
+    drawCenteredText(`暂存槽（当前上限 ${tempLimit}）`, layout.tempArea.left + layout.tempArea.width / 2, layout.tempArea.top + 10, 14)
 
-    for (let i = 0; i < TEMP_SLOT_LIMIT; i++) {
+    for (let i = 0; i < tempLimit; i++) {
       const left = layout.tempArea.left + slotGap + i * (slotWidth + slotGap)
       const top = layout.tempArea.top + 18
       drawRoundRect(left, top, slotWidth, slotHeight, 8, '#ffffff', '#cbd5e1')
 
       const slotBlock = state.tempSlots[i]
-      if (slotBlock) {
-        drawRoundRect(left + 4, top + 4, slotWidth - 8, slotHeight - 8, 8, COLOR_STYLE[slotBlock.color], COLOR_STYLE.border)
-      }
+      if (slotBlock) drawRoundRect(left + 4, top + 4, slotWidth - 8, slotHeight - 8, 8, COLOR_STYLE[slotBlock.color], COLOR_STYLE.border)
     }
   }
 
   function drawColorBins(layout) {
     const { state } = gameStateApi
-    drawCenteredText('收纳框（2 个 / 每个容量 3）', layout.binsArea.left + layout.binsArea.width / 2, layout.binsArea.top + 10, 14)
+    drawCenteredText(`收纳框（${state.colorBins.length} 个 / 每个容量 3）`, layout.binsArea.left + layout.binsArea.width / 2, layout.binsArea.top + 10, 14)
 
-    const gap = 16
-    const binWidth = Math.floor((layout.binsArea.width - gap * (BIN_COUNT + 1)) / BIN_COUNT)
+    const gap = 12
+    const binWidth = Math.floor((layout.binsArea.width - gap * (state.colorBins.length + 1)) / state.colorBins.length)
     const binHeight = 64
     const binTop = layout.binsArea.top + 18
 
@@ -158,6 +169,48 @@ function createRenderer(canvas, gameStateApi) {
       drawCenteredText(`颜色: ${bin.color}`, left + binWidth / 2, binTop + 20, 12)
       drawCenteredText(`${bin.count} / ${bin.capacity}`, left + binWidth / 2, binTop + 48, 14)
     })
+  }
+
+  function drawHelpArea(layout) {
+    const { state } = gameStateApi
+    const gap = 8
+    const btnWidth = Math.floor((layout.helpArea.width - gap * 4) / 3)
+    const btnHeight = 30
+    const top = layout.helpArea.top + 6
+
+    const hintButtonRect = {
+      left: layout.helpArea.left + gap,
+      top,
+      right: layout.helpArea.left + gap + btnWidth,
+      bottom: top + btnHeight
+    }
+
+    const addBinButtonRect = {
+      left: hintButtonRect.right + gap,
+      top,
+      right: hintButtonRect.right + gap + btnWidth,
+      bottom: top + btnHeight
+    }
+
+    const addTempButtonRect = {
+      left: addBinButtonRect.right + gap,
+      top,
+      right: addBinButtonRect.right + gap + btnWidth,
+      bottom: top + btnHeight
+    }
+
+    const drawButton = (rect, text, enabled) => {
+      drawRoundRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, 8, enabled ? '#ede9fe' : '#f1f5f9', '#a78bfa')
+      drawCenteredText(text, (rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2, 12)
+    }
+
+    drawButton(hintButtonRect, '提示一步', state.adHelpState.canHintStep)
+    drawButton(addBinButtonRect, '加收纳篮', state.adHelpState.canAddBin)
+    drawButton(addTempButtonRect, '加暂存槽', state.adHelpState.canAddTempSlot)
+
+    if (state.helpMessage) drawCenteredText(state.helpMessage, layout.helpArea.left + layout.helpArea.width / 2, layout.helpArea.top + 44, 12, '#475569')
+
+    return { hintButtonRect, addBinButtonRect, addTempButtonRect }
   }
 
   function drawFooter(layout) {
@@ -176,26 +229,10 @@ function createRenderer(canvas, gameStateApi) {
       bottom: layout.footerArea.top + 36
     }
 
-    drawRoundRect(
-      restartButtonRect.left,
-      restartButtonRect.top,
-      restartButtonRect.right - restartButtonRect.left,
-      restartButtonRect.bottom - restartButtonRect.top,
-      8,
-      '#dbeafe',
-      '#60a5fa'
-    )
+    drawRoundRect(restartButtonRect.left, restartButtonRect.top, restartButtonRect.right - restartButtonRect.left, restartButtonRect.bottom - restartButtonRect.top, 8, '#dbeafe', '#60a5fa')
     drawCenteredText('重开本关', (restartButtonRect.left + restartButtonRect.right) / 2, (restartButtonRect.top + restartButtonRect.bottom) / 2, 14)
 
-    drawRoundRect(
-      nextButtonRect.left,
-      nextButtonRect.top,
-      nextButtonRect.right - nextButtonRect.left,
-      nextButtonRect.bottom - nextButtonRect.top,
-      8,
-      state.gameStatus === 'win' ? '#dcfce7' : '#f1f5f9',
-      '#86efac'
-    )
+    drawRoundRect(nextButtonRect.left, nextButtonRect.top, nextButtonRect.right - nextButtonRect.left, nextButtonRect.bottom - nextButtonRect.top, 8, state.gameStatus === 'win' ? '#dcfce7' : '#f1f5f9', '#86efac')
     drawCenteredText('下一关', (nextButtonRect.left + nextButtonRect.right) / 2, (nextButtonRect.top + nextButtonRect.bottom) / 2, 14)
 
     drawCenteredText(state.statusText, layout.footerArea.left + layout.footerArea.width / 2, layout.footerArea.top + 52, 14)
@@ -220,12 +257,16 @@ function createRenderer(canvas, gameStateApi) {
     const blockRects = drawBlocks(layout, visibleBlocks)
     drawTempSlots(layout)
     drawColorBins(layout)
+    const helpButtons = drawHelpArea(layout)
     const buttons = drawFooter(layout)
 
     setLayout({
       blockRects,
       restartButtonRect: buttons.restartButtonRect,
-      nextButtonRect: buttons.nextButtonRect
+      nextButtonRect: buttons.nextButtonRect,
+      hintButtonRect: helpButtons.hintButtonRect,
+      addBinButtonRect: helpButtons.addBinButtonRect,
+      addTempButtonRect: helpButtons.addTempButtonRect
     })
   }
 
