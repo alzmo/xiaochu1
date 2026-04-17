@@ -191,6 +191,8 @@ function createGameState() {
     const hintResult = evaluateWithSolver({ maxNodes: 1800 })
 
     if (hintResult.state === SOLVER_STATE.UNSOLVABLE) {
+      // 恢复建议分析只在“提示一步”中执行：
+      // 先分析是否可通过“加收纳篮 / 加暂存槽”回正，再决定是否判定无解。
       const binRecovery = evaluateAddBinRecovery()
       const tempRecovery = evaluateAddTempRecovery()
       const canRecoverByBin = binRecovery.state === SOLVER_STATE.SOLVABLE
@@ -199,19 +201,19 @@ function createGameState() {
       state.highlightedBlockId = null
 
       if (canRecoverByBin && canRecoverByTemp) {
-        state.helpMessage = `当前局面已无解：可通过“加收纳篮（建议颜色 ${binRecovery.suggestedColor}）”或“加暂存槽”回正。`
+        state.helpMessage = `当前局面已无解：可通过加收纳篮或加暂存槽回正（推荐收纳篮颜色：${binRecovery.suggestedColor}）。`
         state.statusText = `第 ${state.currentLevel} 关进行中（局面分析：可通过策略帮助回正）`
         return
       }
 
       if (canRecoverByBin) {
-        state.helpMessage = `当前局面已无解：建议使用“加收纳篮”（建议颜色 ${binRecovery.suggestedColor}）回正。`
+        state.helpMessage = `建议使用加收纳篮回正（推荐颜色：${binRecovery.suggestedColor}）。`
         state.statusText = `第 ${state.currentLevel} 关进行中（局面分析：可通过加收纳篮回正）`
         return
       }
 
       if (canRecoverByTemp) {
-        state.helpMessage = '当前局面已无解：建议使用“加暂存槽”回正。'
+        state.helpMessage = '建议使用加暂存槽回正。'
         state.statusText = `第 ${state.currentLevel} 关进行中（局面分析：可通过加暂存槽回正）`
         return
       }
