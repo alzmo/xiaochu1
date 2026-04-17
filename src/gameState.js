@@ -191,6 +191,31 @@ function createGameState() {
     const hintResult = evaluateWithSolver({ maxNodes: 1800 })
 
     if (hintResult.state === SOLVER_STATE.UNSOLVABLE) {
+      const binRecovery = evaluateAddBinRecovery()
+      const tempRecovery = evaluateAddTempRecovery()
+      const canRecoverByBin = binRecovery.state === SOLVER_STATE.SOLVABLE
+      const canRecoverByTemp = tempRecovery.state === SOLVER_STATE.SOLVABLE
+
+      state.highlightedBlockId = null
+
+      if (canRecoverByBin && canRecoverByTemp) {
+        state.helpMessage = `当前局面已无解：可通过“加收纳篮（建议颜色 ${binRecovery.suggestedColor}）”或“加暂存槽”回正。`
+        state.statusText = `第 ${state.currentLevel} 关进行中（局面分析：可通过策略帮助回正）`
+        return
+      }
+
+      if (canRecoverByBin) {
+        state.helpMessage = `当前局面已无解：建议使用“加收纳篮”（建议颜色 ${binRecovery.suggestedColor}）回正。`
+        state.statusText = `第 ${state.currentLevel} 关进行中（局面分析：可通过加收纳篮回正）`
+        return
+      }
+
+      if (canRecoverByTemp) {
+        state.helpMessage = '当前局面已无解：建议使用“加暂存槽”回正。'
+        state.statusText = `第 ${state.currentLevel} 关进行中（局面分析：可通过加暂存槽回正）`
+        return
+      }
+
       markNoSolution()
       return
     }
@@ -263,7 +288,9 @@ function createGameState() {
     const solveCheck = evaluateWithSolver({ maxNodes: 1200 })
 
     if (solveCheck.state === SOLVER_STATE.UNSOLVABLE) {
-      markNoSolution()
+      state.statusText = `第 ${state.currentLevel} 关进行中（局面分析：当前局面可能已无解）`
+      if (!state.helpMessage) state.helpMessage = '当前局面可能已无解，可点击“提示一步”查看是否可通过策略帮助回正。'
+      state.highlightedBlockId = null
       return
     }
 
@@ -277,36 +304,27 @@ function createGameState() {
     state.statusText = `第 ${state.currentLevel} 关进行中`
   }
 
-  function formatTriState(stateFlag, textMap) {
-    if (stateFlag === SOLVER_STATE.SOLVABLE) return textMap.solvable
-    if (stateFlag === SOLVER_STATE.UNSOLVABLE) return textMap.unsolvable
-    return textMap.unknown
-  }
-
   function addExtraBinHelp() {
     if (state.gameStatus !== 'playing') return
     if (!state.adHelpState.canAddBin) return
 
-    const analysis = evaluateAddBinRecovery()
-    const message = formatTriState(analysis.state, {
-      solvable: `策略建议：若增加 1 个收纳篮（建议颜色 ${analysis.suggestedColor}），当前局面可回正。`,
-      unsolvable: `策略建议：即使增加 1 个收纳篮（建议颜色 ${analysis.suggestedColor}），当前局面仍无解。`,
-      unknown: `策略建议：增加 1 个收纳篮（建议颜色 ${analysis.suggestedColor}）后的结果暂时无法可靠判断。`
-    })
-
-    state.helpMessage = message
+    const suggestedColor = resolveSuggestedBinColor()
+    state.colorBins.push({ color: suggestedColor, count: 0, capacity: BIN_CAPACITY })
+    state.adHelpState.canAddBin = false
+    state.helpMessage = `已生效：本局新增 1 个收纳篮（颜色 ${suggestedColor}）。`
+    state.statusText = `第 ${state.currentLevel} 关进行中（已使用加收纳篮）`
+    evaluateGameResult()
   }
 
   function addExtraTempSlotHelp() {
     if (state.gameStatus !== 'playing') return
     if (!state.adHelpState.canAddTempSlot) return
 
-    const analysis = evaluateAddTempRecovery()
-    state.helpMessage = formatTriState(analysis.state, {
-      solvable: '策略建议：若增加 1 个暂存槽，当前局面可回正。',
-      unsolvable: '策略建议：即使增加 1 个暂存槽，当前局面仍无解。',
-      unknown: '策略建议：增加 1 个暂存槽后的结果暂时无法可靠判断。'
-    })
+    state.extraTempSlots += 1
+    state.adHelpState.canAddTempSlot = false
+    state.helpMessage = '已生效：本局新增 1 个暂存槽位。'
+    state.statusText = `第 ${state.currentLevel} 关进行中（已使用加暂存槽）`
+    evaluateGameResult()
   }
 
   function nextLevel() {
