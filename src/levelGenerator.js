@@ -82,26 +82,13 @@ function buildLevelShape(level, complexity) {
 }
 
 function createColorBag(totalCount, palette) {
-  const colorCountMap = {}
-  palette.forEach((color) => { colorCountMap[color] = 0 })
-
+  const colorBag = []
   const chunks = Math.floor(totalCount / 3)
+
   for (let i = 0; i < chunks; i++) {
     const color = palette[i % palette.length]
-    colorCountMap[color] += 3
+    colorBag.push(color, color, color)
   }
-
-  let assignedCount = chunks * 3
-  while (assignedCount < totalCount) {
-    const color = palette[assignedCount % palette.length]
-    colorCountMap[color] += 1
-    assignedCount += 1
-  }
-
-  const colorBag = []
-  Object.keys(colorCountMap).forEach((color) => {
-    for (let i = 0; i < colorCountMap[color]; i++) colorBag.push(color)
-  })
 
   for (let i = colorBag.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -113,11 +100,7 @@ function createColorBag(totalCount, palette) {
   return colorBag
 }
 
-function generateLevel(level = 1) {
-  const difficulty = getDifficulty(level)
-  const palette = COLOR_POOL.slice(0, difficulty.colors)
-  const levelShape = buildLevelShape(level, difficulty.complexity)
-
+function buildBlockSlots(levelShape, layers, level) {
   const layerOffsets = [
     { x: 0, y: 0 },
     { x: 0, y: 0 },
@@ -127,33 +110,47 @@ function generateLevel(level = 1) {
     { x: -1, y: 1 }
   ]
 
-  const totalBlocks = levelShape.length * difficulty.layers
-  const colorBag = createColorBag(totalBlocks, palette)
-
-  const blockLayers = []
+  const slots = []
   let idCounter = 1
-  let colorCursor = 0
-
-  for (let layer = 1; layer <= difficulty.layers; layer++) {
+  for (let layer = 1; layer <= layers; layer++) {
     const offset = layerOffsets[layer - 1] || { x: 0, y: 0 }
     levelShape.forEach((cell) => {
-      blockLayers.push({
+      slots.push({
         id: `L${level}-B${idCounter++}`,
         x: cell.x + offset.x,
         y: cell.y + offset.y,
-        layer,
-        color: colorBag[colorCursor++],
-        removed: false
+        layer
       })
     })
   }
 
+  return slots
+}
+
+function generateLevel(level = 1) {
+  const difficulty = getDifficulty(level)
+  const palette = COLOR_POOL.slice(0, difficulty.colors)
+  const levelShape = buildLevelShape(level, difficulty.complexity)
+  const blockSlots = buildBlockSlots(levelShape, difficulty.layers, level)
+
+  const usableCount = Math.max(3, Math.floor(blockSlots.length / 3) * 3)
+  const selectedSlots = blockSlots.slice(0, usableCount)
+  const colorBag = createColorBag(selectedSlots.length, palette)
+
+  const blockLayers = selectedSlots.map((slot, index) => ({
+    ...slot,
+    color: colorBag[index],
+    removed: false
+  }))
+
   const xs = blockLayers.map((b) => b.x)
   const ys = blockLayers.map((b) => b.y)
+
   return {
     level,
     palette,
     difficulty,
+    levelShape,
     blockLayers,
     bounds: {
       minX: Math.min(...xs),
