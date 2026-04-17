@@ -13,6 +13,12 @@ const DEFAULT_SOLVER_OPTIONS = {
   autoStoreStepLimit: 12
 }
 
+const SOLVER_STATE = {
+  SOLVABLE: 'solvable',
+  UNSOLVABLE: 'unsolvable',
+  UNKNOWN: 'unknown'
+}
+
 function buildStateSignature(levelData, tempSlots, colorBins) {
   const removedIds = levelData.blockLayers.filter((b) => b.removed).map((b) => b.id).sort().join(',')
   const tempKey = tempSlots.map((slot) => slot.color).join(',')
@@ -61,6 +67,17 @@ function simulatePickStep(snapshot, blockId, options) {
   return { levelData, tempSlots, colorBins }
 }
 
+function createSolveResult(state, payload = {}) {
+  return {
+    state,
+    solvable: state === SOLVER_STATE.SOLVABLE,
+    path: payload.path || [],
+    expandedNodes: payload.expandedNodes || 0,
+    reason: payload.reason || '',
+    searchLimitHit: state === SOLVER_STATE.UNKNOWN
+  }
+}
+
 function solveLevelState(input, options = {}) {
   const mergedOptions = {
     ...DEFAULT_SOLVER_OPTIONS,
@@ -83,12 +100,11 @@ function solveLevelState(input, options = {}) {
     const { levelData, tempSlots, colorBins } = node.snapshot
 
     if (isVictoryState(levelData, tempSlots, colorBins)) {
-      return {
-        solvable: true,
+      return createSolveResult(SOLVER_STATE.SOLVABLE, {
         path: node.path,
         expandedNodes,
         reason: 'solved'
-      }
+      })
     }
 
     const signature = buildStateSignature(levelData, tempSlots, colorBins)
@@ -112,14 +128,22 @@ function solveLevelState(input, options = {}) {
     }
   }
 
-  return {
-    solvable: false,
+  if (expandedNodes >= mergedOptions.maxNodes) {
+    return createSolveResult(SOLVER_STATE.UNKNOWN, {
+      path: [],
+      expandedNodes,
+      reason: 'nodes_exceeded'
+    })
+  }
+
+  return createSolveResult(SOLVER_STATE.UNSOLVABLE, {
     path: [],
     expandedNodes,
-    reason: expandedNodes >= mergedOptions.maxNodes ? 'nodes_exceeded' : 'no_solution'
-  }
+    reason: 'no_solution'
+  })
 }
 
 module.exports = {
-  solveLevelState
+  solveLevelState,
+  SOLVER_STATE
 }

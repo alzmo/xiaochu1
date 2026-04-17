@@ -119,9 +119,13 @@ function createRenderer(canvas, gameStateApi) {
         const isHighlighted = state.highlightedBlockId === block.id
         drawRoundRect(left, top, size, size, 6, COLOR_STYLE[block.color], COLOR_STYLE.border)
         if (isHighlighted) {
-          drawRoundRect(left - 2, top - 2, size + 4, size + 4, 8, null, '#fde047', 3)
+          drawRoundRect(left - 3, top - 3, size + 6, size + 6, 9, null, '#f59e0b', 3)
+          drawRoundRect(left - 6, top - 6, size + 12, size + 12, 11, 'rgba(251, 191, 36, 0.2)', null)
         }
         drawBlockLayerLabel(block.layer, left + size / 2, top + size / 2, size)
+        if (isHighlighted) {
+          drawCenteredText('推荐', left + size / 2, top - 8, 11, '#b45309')
+        }
         blockRects.push({
           blockId: block.id,
           left,
@@ -208,7 +212,10 @@ function createRenderer(canvas, gameStateApi) {
     drawButton(addBinButtonRect, '加收纳篮', state.adHelpState.canAddBin)
     drawButton(addTempButtonRect, '加暂存槽', state.adHelpState.canAddTempSlot)
 
-    if (state.helpMessage) drawCenteredText(state.helpMessage, layout.helpArea.left + layout.helpArea.width / 2, layout.helpArea.top + 44, 12, '#475569')
+    if (state.helpMessage) {
+      const messageColor = state.helpMessage.includes('无解') ? '#b91c1c' : (state.helpMessage.includes('无法') ? '#92400e' : '#475569')
+      drawCenteredText(state.helpMessage, layout.helpArea.left + layout.helpArea.width / 2, layout.helpArea.top + 44, 12, messageColor)
+    }
 
     return { hintButtonRect, addBinButtonRect, addTempButtonRect }
   }
